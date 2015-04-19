@@ -5,7 +5,8 @@
         "learning-switch",
         "rest-listener",
         "host-manager",
-        "controller-manager"
+        "controller-manager",
+        "myapp"
     ],
 
     "rest-listener" : {

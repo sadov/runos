@@ -1,0 +1,6 @@
+# Run it INSIDE build directory
+cd build
+source ../debug_run_env.sh
+cd ..
+build/runos
+exit

@@ -252,22 +252,7 @@ void SwitchScope::processTableMiss(of13::PacketIn& pi)
             // Sometimes we don't need to create a new flow on the switch.
             // So, reply to the packet-in using packet-out message.
             DVLOG(9) << "Sending packet-out";
-
-            of13::PacketOut po;
-            po.xid(pi.xid());
-            po.buffer_id(pi.buffer_id());
-            flow->initPacketOut(&po);
-
-            uint8_t* buffer = po.pack();
-            ofconn->send(buffer, po.length());
-            OFMsg::free_buffer(buffer);
-
-            flow->deleteLater();
-        } else {
-            // In other cases we need to add newly created Flow into the
-            // trace tree and rebuild it [TODO: incrementaly].
-            DVLOG(5) << "Rebuilding flow table on conn = " << conn_id;
-
+  
             static const struct Barrier {
                 uint8_t* data;
                 size_t len;

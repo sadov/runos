@@ -55,6 +55,7 @@ add_executable(runos
     src/SimpleLearningSwitch.cc
     src/LearningSwitch.cc
     src/CBench.cc
+    src/MyApp.cc
     # Loader
     src/Main.cc
     # Third-party
