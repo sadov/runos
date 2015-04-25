@@ -54,7 +54,7 @@ OFMessageHandler::Action MyApp::Handler::processMiss(OFConnection* ofconn, Flow*
 	// Add in_port to Flow Mod
 	//fm.add_oxm_field(port);
 	// Create eth_type oxm_field with value=0x0800 and add to Flow Mod
-	//fm.add_oxm_field(new of13::EthType(0x0800));
+	fm.add_oxm_field(new of13::EthType(0x0800));
 	// add match IPsrc = 192.168.0.0
 	// add match IPdst = 255.255.255.255
 
@@ -65,7 +65,7 @@ OFMessageHandler::Action MyApp::Handler::processMiss(OFConnection* ofconn, Flow*
 	fm.add_oxm_field(new of13::IPv4Dst(ipDst, mask));
 
 	// Create eth_type oxm_field with value=0x0800 and add to Flow Mod
-	fm.add_oxm_field(new of13::EthType(0x0800));
+	//fm.add_oxm_field(new of13::EthType(0x0800));
 
 
 	//fm.add_oxm_field(new of13::IPv4Dst(ip));
@@ -78,9 +78,17 @@ OFMessageHandler::Action MyApp::Handler::processMiss(OFConnection* ofconn, Flow*
 	//Add the ApplyAction to FlowMod
 	fm.add_instruction(inst);
 
-	uint8_t *buff = fm.pack();
+	//uint8_t *buff = fm.pack();
+
+
+
+	uint8_t *buff;
+	std::cout << "length = " << of13::ARPTHA( EthAddress("00:00:00:00:00:01") ).pack(buff) << std::endl;
 	
 	ofconn->send(buff, fm.length());
+
+
+
 	std::cout << "-----" << " MESSAGE " << "-----" << std:: endl;
 	std::cout << "size = " << fm.length() << std::endl;
 	of13::Match m = fm.match();
