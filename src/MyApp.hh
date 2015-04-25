@@ -16,11 +16,36 @@ public:
 public slots:
 	void onSwitchUp(OFConnection* ofconn, of13::FeaturesReply fr);
 
+
+    OFMessageHandler::Action BGPprocess(OFConnection* ofconn, of13::FeaturesReply fr);
 private:
     class Handler: public OFMessageHandler {
     public:
         Action processMiss(OFConnection* ofconn, Flow* flow) override;
     };
+
+    ARPservice ARPhandler;
+};
+
+
+class ARPservice
+{
+    struct Record
+    {
+        EthAddress mac;
+        IPAddress ip;
+
+        Record(const EthAddress & Ethadd, const IPAddress & IPadd) : mac(Ethadd), ip(IPadd) {}
+    };
+    std::vector< Record > ARPtable;
+public:
+    void addRecord(EthAddress & mac, IPAddress & ip)
+    { ARPtable.push_back(Record(mac, ip)); }
+
+    EthAddress * find(IPAddress & ip);
+    IPAddress * find(EthAddress & mac);
+    bool find(EthAddress & mac, IPAddress & ip);
+    OFMessageHandler::Action process(OFConnection* ofconn, Flow* flow);  
 };
 
 /*
