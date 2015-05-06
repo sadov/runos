@@ -1,6 +1,9 @@
 
 #include "MyApp.hh"
 #include "Controller.hh"
+#include <sys/types.h>
+ #include <sys/socket.h>
+ #include <netinet/in.h> 
 //#include "OFMsgUnion.hh"
 //#include <fluid/OFServer.hh>
 //#include <fluid/of13msg.hh>
@@ -36,15 +39,29 @@ void MyApp::init(Loader *loader, const Config& config)
     Controller* ctrl = Controller::get(loader);
     QObject::connect(ctrl, &Controller::switchUp, this, &MyApp::onSwitchUp);
     ctrl->registerHandler(this);
+    // int socket (domain, type, protocol) - возвращает дескриптор или -1
+    // int domain = AF_INET (стек TCP/IP)
+    // int type = SOCK_STREAM (с установлением соединения, SOCK_DGRAM - без установления)
+    // int protocol =  0 (по умлочанию либо TCP либо UDP, в зависимости от type)
+	int sockDesk = socket (AF_INET, SOCK_STREAM, 0);
+	if (sockDesk < 0)
+		std::cerr << "Error: can't create socket" << std::endl;
+	// int bind (s, addr, addrlen)
+	// int s = sockDesk (дескриптор, полученный от сокета)
+	// struct sockaddr * addr ()
+	// int addrlen = sizeof(addr) (размер структуры addr)
+
+	/////if (connect(sockDesk, &serv_addr, sizeof(serv_addr)) < 0)
+
 }
 
 
-OFMessageHandler::Action Myapp::BGPprocess(OFConnection* ofconn, of13::FeaturesReply fr)
+OFMessageHandler::Action MyApp::BGPprocess(OFConnection* ofconn, Flow* flow)
 {
 	Packet * packet = flow->pkt();
 	// if IP-packet and TCP-segment
 	if (packet->readEthType() != 0x0800 || packet->readIPProto() != 6) 
-		return Continue;
+		return OFMessageHandler::Continue;
 	of13::FlowMod fm;
 	// Creates in_port oxm_field with value=1
 	of13::InPort *port = new of13::InPort(1);
@@ -72,6 +89,7 @@ OFMessageHandler::Action Myapp::BGPprocess(OFConnection* ofconn, of13::FeaturesR
 	uint8_t *buff = fm.pack();
 	ofconn->send(buff, fm.length());
 	delete[] buff;
+	return OFMessageHandler::Continue;
 }
 /*
 unsigned ARP_SIZE = 2 + 2 + 1 + 1 + 2 + 6 + 4 + 6 + 4;
@@ -101,7 +119,7 @@ uint8_t * getARP(const uint16_t operation, EthAddress srcEth, IPAddress srcIP = 
 */
 
 
-const EthAddress * ARPservice::find(IPAddress & ip)
+EthAddress * ARPservice::find(const IPAddress & ip)
 {
 	for (unsigned i = 0; i < ARPtable.size(); ++i)
 		if (ARPtable[i].ip == ip)
@@ -109,7 +127,7 @@ const EthAddress * ARPservice::find(IPAddress & ip)
 	return nullptr;
 }
 
-const IPAddress * ARPservice::find(EthAddress & mac)
+IPAddress * ARPservice::find(const EthAddress & mac)
 {
 	for (unsigned i = 0; i < ARPtable.size(); ++i)
 		if (ARPtable[i].mac == mac)
@@ -118,7 +136,7 @@ const IPAddress * ARPservice::find(EthAddress & mac)
 }
 
 
-bool ARPservice::find(EthAddress & mac, IPAddress & ip)
+bool ARPservice::find(const EthAddress & mac, const IPAddress & ip)
 {
 	for (unsigned i = 0; i < ARPtable.size(); ++i)
 		if (ARPtable[i].mac == mac && ARPtable[i].ip == ip)
@@ -130,40 +148,42 @@ bool ARPservice::find(EthAddress & mac, IPAddress & ip)
 OFMessageHandler::Action ARPservice::process(OFConnection* ofconn, Flow* flow)
 {
 	if (flow->pkt()->readEthType() != 0x0806)
-		return Continue;
+		return OFMessageHandler::Continue;
 	Packet * packet = flow->pkt();
 	uint16_t op = packet->readARPOp();
 	switch (op)
 	{
 	case 0: 
-		return Stop;
+		return OFMessageHandler::Stop;
 	case 1:
+		{
 		if (!find(packet->readARPSHA(), packet->readARPSPA()))
 			addRecord(packet->readARPSHA(), packet->readARPSPA());
 		EthAddress * addr = find(packet->readARPTPA());
 		if (!addr)
-			return Stop;
+			return OFMessageHandler::Stop;
 		// TODO: sending ARP-reply
-		return Continue;
+		return OFMessageHandler::Continue;
+		}
 	case 2:
-		if (find(packet->readARPSHA(), packet->readARPSPA())
+		if (find(packet->readARPSHA(), packet->readARPSPA()))
 			addRecord(packet->readARPSHA(), packet->readARPSPA());
-		if (find(packet->readARPTHA(), packet->readARPTPA())
+		if (find(packet->readARPTHA(), packet->readARPTPA()))
 			addRecord(packet->readARPTHA(), packet->readARPTPA());
-		return Continue;
+		return OFMessageHandler::Continue;
 	default:
 		// TODO: ERROR ?
+		return OFMessageHandler::Continue;
 	}
-	
 
 }
 
 
 OFMessageHandler::Action MyApp::Handler::processMiss(OFConnection* ofconn, Flow* flow)
 {
-	if (ARPhandler.process(OFConnection* ofconn, Flow* flow) == Stop)
-		return Stop;
-	if ()
+	//if (ARPhandler.process(ofconn, flow) == Stop)
+	//	return Stop;
+	//if ()
 	return Continue;
 
 	/*
