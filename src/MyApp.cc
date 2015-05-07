@@ -9,6 +9,133 @@
 //#include <fluid/of13msg.hh>
 
 
+
+
+
+enum cgnat_action_type {
+		CGNAT_ACTION_CREATE_IPV4,
+		CGNAT_ACTION_DELETE_IPV4,
+		CGNAT_ACTION_DONE,
+		CGNAT_ACTION_NON,
+};
+
+struct cgnat_message {
+	enum cgnat_action_type type;
+	u_char prefix_len;
+	uint32_t prefix;
+	uint32_t gate;
+};
+
+int SocketHandler::init()
+{
+	struct sockaddr_in addr;
+	// TODO: check exist old file
+	// Create socket
+	sock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (sock == -1)
+	{
+		std::cerr << "Error: can't create socket" << std::endl;
+		return -1;
+	}
+	// Set socket settings
+	memset(&addr, 0, sizeof (addr));
+	addr.sin_family = PF_INET;
+	addr.sin_port = htons(port);
+	addr.sin_addr.s_addr = htonl(INADDR_ANY);
+	// bind to socket
+	if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) == -1)
+	{
+	std::cerr << "Error: cann't bind" << std::endl;
+		close(sock);
+		return -1;
+	}
+	// TODO:  Check: if user quagga exist set socket permitions ????
+	is_init = true;
+	
+/*
+	struct sockaddr_un addr;
+	// TODO: check exist old file
+	// Create socket 
+	sock = socket (AF_INET, SOCK_STREAM, 0);
+	if (sock == -1)
+	{
+		std::cerr << "Error: can't create socket" << std::endl;
+		return -1;
+	}
+	// Set socket settings 
+    memset(&addr, 0, sizeof(struct sockaddr_un));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, CGNAT_SOCK_PATH, sizeof(addr.sun_path)-1);
+    // bind to socket 
+	if ((bind(sock, (struct sockaddr *)&addr, sizeof(struct sockaddr_un))) == -1)
+	{
+		close(sock);
+		return -1;
+	}
+*/
+}
+int SocketHandler::read()
+{
+	// check socket init
+	if (!is_init)
+	{
+		std::cerr << "socket wasn\'t init" << std::endl;
+		return -1;
+	}
+	// listen socket
+	if (listen(sock, 1) != 0) 
+	{
+		std::cerr << "Listen socket failed" << std::endl;
+		return -1;
+	}
+	// accept socket
+	int tmpfd = accept(sock, NULL,NULL);
+	if (tmpfd < 0)
+	{
+		std::cerr << "accept failed" << std::endl;
+		return -1;
+	}
+	// read messages
+	cgnat_message msg;
+	while (::read(tmpfd, (void *)&msg, sizeof(struct cgnat_message)) > 0)
+	{
+		switch(msg.type)
+		{
+			case CGNAT_ACTION_CREATE_IPV4:
+			{
+				vRoute.push_back(Route(msg.prefix_len, msg.prefix, msg.gate));
+				msg.type = CGNAT_ACTION_DONE;
+				break;
+			}
+			case CGNAT_ACTION_DELETE_IPV4:
+			{
+				Route r(msg.prefix_len, msg.prefix, msg.gate);
+				unsigned i = 0;
+				for (; i < vRoute.size() && (vRoute[i] != r); ++i)
+					;
+				if (i < vRoute.size())
+				{
+					vRoute.erase(vRoute.begin() + i);
+					msg.type = CGNAT_ACTION_DONE;
+				}
+				else
+					msg.type = CGNAT_ACTION_NON;
+				break;
+			}
+			//default:
+			//	TODO ?????????????????????
+			// maybe ERROR?
+		}
+		// send replay message
+		if (send(tmpfd, (const void *)&msg, sizeof(struct cgnat_message), MSG_NOSIGNAL) != sizeof(struct cgnat_message))
+		{
+			std::cerr << "cann't send replay message" << std::endl;
+			return -1;
+		}
+	}
+}
+
+
 std::ostream & operator<< (std::ostream & out, const EthAddress & address)
 {
 	out << address.to_string();
@@ -39,20 +166,9 @@ void MyApp::init(Loader *loader, const Config& config)
     Controller* ctrl = Controller::get(loader);
     QObject::connect(ctrl, &Controller::switchUp, this, &MyApp::onSwitchUp);
     ctrl->registerHandler(this);
-    // int socket (domain, type, protocol) - возвращает дескриптор или -1
-    // int domain = AF_INET (стек TCP/IP)
-    // int type = SOCK_STREAM (с установлением соединения, SOCK_DGRAM - без установления)
-    // int protocol =  0 (по умлочанию либо TCP либо UDP, в зависимости от type)
-	int sockDesk = socket (AF_INET, SOCK_STREAM, 0);
-	if (sockDesk < 0)
-		std::cerr << "Error: can't create socket" << std::endl;
-	// int bind (s, addr, addrlen)
-	// int s = sockDesk (дескриптор, полученный от сокета)
-	// struct sockaddr * addr ()
-	// int addrlen = sizeof(addr) (размер структуры addr)
-
-	/////if (connect(sockDesk, &serv_addr, sizeof(serv_addr)) < 0)
-
+    
+    
+    
 }
 
 
@@ -118,7 +234,7 @@ uint8_t * getARP(const uint16_t operation, EthAddress srcEth, IPAddress srcIP = 
 }
 */
 
-
+/*
 EthAddress * ARPservice::find(const IPAddress & ip)
 {
 	for (unsigned i = 0; i < ARPtable.size(); ++i)
@@ -177,7 +293,7 @@ OFMessageHandler::Action ARPservice::process(OFConnection* ofconn, Flow* flow)
 	}
 
 }
-
+*/
 
 OFMessageHandler::Action MyApp::Handler::processMiss(OFConnection* ofconn, Flow* flow)
 {
