@@ -2,5 +2,5 @@
 cd build
 source ../debug_run_env.sh
 cd ..
-build/runos
+sudo build/runos
 exit

@@ -79,4 +79,5 @@ target_link_libraries(runos
     ${GLOG_LIBRARIES}
     ${Boost_LIBRARIES}
     ${QT_QTNETWORK_LIBRARY}
+    -pthread
 )

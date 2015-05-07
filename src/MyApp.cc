@@ -10,7 +10,7 @@
 
 
 
-
+SocketHandler zebra(CGNAT_SOCK_PATH);
 
 enum cgnat_action_type {
 		CGNAT_ACTION_CREATE_IPV4,
@@ -26,8 +26,28 @@ struct cgnat_message {
 	uint32_t gate;
 };
 
+void * routeFromSocket(void * arg)
+{
+	SocketHandler * socketHandler = reinterpret_cast<SocketHandler *>(arg);
+	socketHandler->init();
+    while (1)
+    	std::cout << "read_status == " << socketHandler->read() << std::endl;
+    return nullptr;
+}
+
+int init_takingMessages()
+{
+        pthread_t threadZebra;
+        int error;
+        // int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_routine)(void*), void *arg);
+        error = pthread_create(&threadZebra, NULL, routeFromSocket, &zebra);
+        return error;
+}
+
+
 int SocketHandler::init()
 {
+/*
 	struct sockaddr_in addr;
 	// TODO: check exist old file
 	// Create socket
@@ -51,28 +71,37 @@ int SocketHandler::init()
 	}
 	// TODO:  Check: if user quagga exist set socket permitions ????
 	is_init = true;
-	
-/*
+*/
+
 	struct sockaddr_un addr;
+	struct stat buf;
 	// TODO: check exist old file
+	if (stat(CGNAT_SOCK_PATH, &buf) != -1) {
+    	std::cerr << "Old socket file exists\n";
+    	if (remove(CGNAT_SOCK_PATH) == -1)
+    		std::cerr << "Delete old socket file error" << std::endl;
+    }
 	// Create socket 
-	sock = socket (AF_INET, SOCK_STREAM, 0);
+	sock = socket (AF_UNIX, SOCK_STREAM, 0);
 	if (sock == -1)
 	{
 		std::cerr << "Error: can't create socket" << std::endl;
 		return -1;
 	}
 	// Set socket settings 
-    memset(&addr, 0, sizeof(struct sockaddr_un));
+    memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
     strncpy(addr.sun_path, CGNAT_SOCK_PATH, sizeof(addr.sun_path)-1);
     // bind to socket 
-	if ((bind(sock, (struct sockaddr *)&addr, sizeof(struct sockaddr_un))) == -1)
+	if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) == -1)
 	{
+		std::cerr << "Error: can't bind socket (" << errno << ")" << std::endl;
+		//std::cerr << perror("ошибка") << std::endl;
+		perror("ошибка");
 		close(sock);
 		return -1;
 	}
-*/
+	is_init = true;
 }
 int SocketHandler::read()
 {
@@ -95,7 +124,7 @@ int SocketHandler::read()
 		std::cerr << "accept failed" << std::endl;
 		return -1;
 	}
-	// read messages
+	// read
 	cgnat_message msg;
 	while (::read(tmpfd, (void *)&msg, sizeof(struct cgnat_message)) > 0)
 	{
@@ -133,6 +162,7 @@ int SocketHandler::read()
 			return -1;
 		}
 	}
+	return 0;
 }
 
 
@@ -166,9 +196,8 @@ void MyApp::init(Loader *loader, const Config& config)
     Controller* ctrl = Controller::get(loader);
     QObject::connect(ctrl, &Controller::switchUp, this, &MyApp::onSwitchUp);
     ctrl->registerHandler(this);
-    
-    
-    
+    // init of receiving messages
+    init_takingMessages();
 }
 
 

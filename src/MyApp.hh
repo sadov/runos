@@ -64,20 +64,19 @@ public:
 class SocketHandler
 {
 	bool is_init;
-	// const char * sockPath;
-	int port; // application port
+	const char * sockPath;
+	//int port; // application port
 	int sock;
 	int8_t * data;
 	int dataSize;
 	std::vector<Route> vRoute;
-
-	int init();
-	bool isinit() { return is_init; }
-	int read();
 public:
-	SocketHandler(const int portApp) : is_init(false), port(portApp), sock(-1), data(nullptr), dataSize(0)
+	SocketHandler(const char * path) : is_init(false), sockPath(path), sock(-1), data(nullptr), dataSize(0)
 	{}
 	const std::vector<Route> & getRoutes() { return vRoute; }
+	int init();
+	//bool isinit() { return is_init; }
+	int read();
 
 	~SocketHandler() {}
 };
@@ -101,7 +100,7 @@ private:
 	public:
 		Action processMiss(OFConnection* ofconn, Flow* flow) override;
 	};
-	//SocketHandler zebra;
+	
 	//ARPservice ARPhandler;
 };
 
