@@ -8,10 +8,6 @@
 //#include <fluid/OFServer.hh>
 //#include <fluid/of13msg.hh>
 
-
-
-SocketHandler zebra(CGNAT_SOCK_PATH);
-
 enum cgnat_action_type {
 		CGNAT_ACTION_CREATE_IPV4,
 		CGNAT_ACTION_DELETE_IPV4,
@@ -26,22 +22,48 @@ struct cgnat_message {
 	uint32_t gate;
 };
 
+SocketHandler zebra(CGNAT_SOCK_PATH);
+
+
+/* Signals catcher */
+void catcher(int sig)
+{
+	if ((sig == SIGINT) || (sig == SIGTERM ) || (sig == SIGKILL))
+	{
+		zebra.close();
+		exit(1);
+	}
+}
+
+void SocketHandler::close()
+{
+	if (sock) 
+		::close(sock);
+	if (sock_fd)
+		::close(sock_fd);
+	remove(sockPath);
+}
+
 void * routeFromSocket(void * arg)
 {
 	SocketHandler * socketHandler = reinterpret_cast<SocketHandler *>(arg);
 	socketHandler->init();
-    while (1)
-    	std::cout << "read_status == " << socketHandler->read() << std::endl;
-    return nullptr;
+	while (1)
+		std::cout << "read_status == " << socketHandler->read() << std::endl;
+	return nullptr;
 }
 
 int init_takingMessages()
 {
-        pthread_t threadZebra;
-        int error;
-        // int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_routine)(void*), void *arg);
-        error = pthread_create(&threadZebra, NULL, routeFromSocket, &zebra);
-        return error;
+	signal(SIGINT, catcher);
+	signal(SIGTERM, catcher);
+	signal(SIGKILL, catcher);
+
+	pthread_t threadZebra;
+	int error;
+	// int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_routine)(void*), void *arg);
+	error = pthread_create(&threadZebra, NULL, routeFromSocket, &zebra);
+	return error;
 }
 
 
@@ -77,10 +99,10 @@ int SocketHandler::init()
 	struct stat buf;
 	// TODO: check exist old file
 	if (stat(CGNAT_SOCK_PATH, &buf) != -1) {
-    	std::cerr << "Old socket file exists\n";
-    	if (remove(CGNAT_SOCK_PATH) == -1)
-    		std::cerr << "Delete old socket file error" << std::endl;
-    }
+		std::cerr << "Old socket file exists\n";
+		if (remove(CGNAT_SOCK_PATH) == -1)
+			std::cerr << "Delete old socket file error" << std::endl;
+	}
 	// Create socket 
 	sock = socket (AF_UNIX, SOCK_STREAM, 0);
 	if (sock == -1)
@@ -89,16 +111,16 @@ int SocketHandler::init()
 		return -1;
 	}
 	// Set socket settings 
-    memset(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, CGNAT_SOCK_PATH, sizeof(addr.sun_path)-1);
-    // bind to socket 
+	memset(&addr, 0, sizeof(addr));
+	addr.sun_family = AF_UNIX;
+	strncpy(addr.sun_path, CGNAT_SOCK_PATH, sizeof(addr.sun_path)-1);
+	// bind to socket 
 	if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) == -1)
 	{
 		std::cerr << "Error: can't bind socket (" << errno << ")" << std::endl;
 		//std::cerr << perror("ошибка") << std::endl;
 		perror("ошибка");
-		close(sock);
+		close();
 		return -1;
 	}
 	is_init = true;
@@ -118,15 +140,15 @@ int SocketHandler::read()
 		return -1;
 	}
 	// accept socket
-	int tmpfd = accept(sock, NULL,NULL);
-	if (tmpfd < 0)
+	sock_fd = accept(sock, NULL,NULL);
+	if (sock_fd < 0)
 	{
 		std::cerr << "accept failed" << std::endl;
 		return -1;
 	}
 	// read
 	cgnat_message msg;
-	while (::read(tmpfd, (void *)&msg, sizeof(struct cgnat_message)) > 0)
+	while (::read(sock_fd, (void *)&msg, sizeof(struct cgnat_message)) > 0)
 	{
 		switch(msg.type)
 		{
@@ -156,7 +178,7 @@ int SocketHandler::read()
 			// maybe ERROR?
 		}
 		// send replay message
-		if (send(tmpfd, (const void *)&msg, sizeof(struct cgnat_message), MSG_NOSIGNAL) != sizeof(struct cgnat_message))
+		if (send(sock_fd, (const void *)&msg, sizeof(struct cgnat_message), MSG_NOSIGNAL) != sizeof(struct cgnat_message))
 		{
 			std::cerr << "cann't send replay message" << std::endl;
 			return -1;
@@ -186,18 +208,18 @@ std::ostream & operator<< (std::ostream & out, const IPAddress & address)
 
 void MyApp::onSwitchUp(OFConnection* ofconn, of13::FeaturesReply fr)
 {
-    LOG(INFO) << "Look! This is a switch " << FORMAT_DPID;// << fr.xid();
-    LOG(INFO) << "Hello, world!";
+	LOG(INFO) << "Look! This is a switch " << FORMAT_DPID;// << fr.xid();
+	LOG(INFO) << "Hello, world!";
 }
 
 void MyApp::init(Loader *loader, const Config& config)
 {
 	//std::cout << "init" << std::endl;
-    Controller* ctrl = Controller::get(loader);
-    QObject::connect(ctrl, &Controller::switchUp, this, &MyApp::onSwitchUp);
-    ctrl->registerHandler(this);
-    // init of receiving messages
-    init_takingMessages();
+	Controller* ctrl = Controller::get(loader);
+	QObject::connect(ctrl, &Controller::switchUp, this, &MyApp::onSwitchUp);
+	ctrl->registerHandler(this);
+	// init of receiving messages
+	init_takingMessages();
 }
 
 
@@ -415,15 +437,15 @@ OFMessageHandler::Action MyApp::Handler::processMiss(OFConnection* ofconn, Flow*
 	*/
 
 	/*
-    if (flow != nullptr && flow->match(of13::EthSrc("00:00:00:00:00:00")))
-    {
-    	std::cout << "catch and drop" << std::endl;
-    	return Stop;
-    } 
-    else
-    	return Continue;
-    */
-    
+	if (flow != nullptr && flow->match(of13::EthSrc("00:00:00:00:00:00")))
+	{
+		std::cout << "catch and drop" << std::endl;
+		return Stop;
+	} 
+	else
+		return Continue;
+	*/
+	
 }
 
 
@@ -434,6 +456,6 @@ REGISTER_APPLICATION(MyApp, {""})
 
 void MyApp::init(Loader *loader, const Config& config)
 {
-    LOG(INFO) << "Hello, world!";
-    //std::cout << "lalala" << std::endl;
+	LOG(INFO) << "Hello, world!";
+	//std::cout << "lalala" << std::endl;
 }*/
