@@ -30,25 +30,40 @@ void catcher(int sig)
 {
 	if ((sig == SIGINT) || (sig == SIGTERM ) || (sig == SIGKILL))
 	{
+		// close openning sockets
+		std::cout << "close" << std::endl;
 		zebra.close();
 		exit(1);
 	}
+	else if (sig == SIGALRM)
+	{
+		// check vector of Routes
+		std::cout << "===== vRoute =====" << std::endl;
+		zebra.printRoutes();
+		std::cout << "=== End vRoute ===" << std::endl;
+		alarm(5);
+	}
 }
 
-void SocketHandler::close()
-{
-	if (sock) 
-		::close(sock);
-	if (sock_fd)
-		::close(sock_fd);
-	remove(sockPath);
-}
+	std::ostream & operator<<(std::ostream & out, const Route & r)
+	{
+		out << r.prefix % 256;
+		uint32_t prefix = r.prefix;
+		for (int i = 1; i < 4; ++i)
+		{
+			prefix /= 256;
+			out << '.' << prefix % 256;
+		}
+		return out << '/' << static_cast<int>(r.prefix_len) << " ---> " << r.gate;
+	}
+
 
 void * routeFromSocket(void * arg)
 {
+	std::cout << "\"void * routeFromSocket(void * arg)\" was started"  << std::endl;
 	SocketHandler * socketHandler = reinterpret_cast<SocketHandler *>(arg);
-	socketHandler->init();
-	while (1)
+	std::cout << "status socketHandler->init() == " << socketHandler->init() << std::endl;
+	while (true)
 		std::cout << "read_status == " << socketHandler->read() << std::endl;
 	return nullptr;
 }
@@ -58,6 +73,8 @@ int init_takingMessages()
 	signal(SIGINT, catcher);
 	signal(SIGTERM, catcher);
 	signal(SIGKILL, catcher);
+	signal (SIGALRM, catcher);
+	alarm(10);
 
 	pthread_t threadZebra;
 	int error;
@@ -66,7 +83,7 @@ int init_takingMessages()
 	return error;
 }
 
-
+// class SocketHandler 
 int SocketHandler::init()
 {
 /*
@@ -127,18 +144,21 @@ int SocketHandler::init()
 }
 int SocketHandler::read()
 {
+	std::cout << "begin read" << std::endl;
 	// check socket init
 	if (!is_init)
 	{
 		std::cerr << "socket wasn\'t init" << std::endl;
 		return -1;
 	}
+	std::cout << "begin listen" << std::endl;
 	// listen socket
 	if (listen(sock, 1) != 0) 
 	{
 		std::cerr << "Listen socket failed" << std::endl;
 		return -1;
 	}
+	std::cout << "begin accept" << std::endl;
 	// accept socket
 	sock_fd = accept(sock, NULL,NULL);
 	if (sock_fd < 0)
@@ -146,6 +166,7 @@ int SocketHandler::read()
 		std::cerr << "accept failed" << std::endl;
 		return -1;
 	}
+	std::cout << "begin receive data" << std::endl;
 	// read
 	cgnat_message msg;
 	while (::read(sock_fd, (void *)&msg, sizeof(struct cgnat_message)) > 0)
@@ -156,6 +177,8 @@ int SocketHandler::read()
 			{
 				vRoute.push_back(Route(msg.prefix_len, msg.prefix, msg.gate));
 				msg.type = CGNAT_ACTION_DONE;
+				std::cout << "CGNAT_ACTION_CREATE_IPV4" << std::endl;
+				std::cout << msg.prefix_len << " : " << msg.prefix << " : " << msg.gate << '\n';
 				break;
 			}
 			case CGNAT_ACTION_DELETE_IPV4:
@@ -171,6 +194,7 @@ int SocketHandler::read()
 				}
 				else
 					msg.type = CGNAT_ACTION_NON;
+				std::cout << "CGNAT_ACTION_DELETE_IPV4" << std::endl;
 				break;
 			}
 			//default:
@@ -186,6 +210,16 @@ int SocketHandler::read()
 	}
 	return 0;
 }
+
+void SocketHandler::close()
+{
+	if (sock) 
+		::close(sock);
+	if (sock_fd)
+		::close(sock_fd);
+	remove(sockPath);
+}
+// end of class SocketHandler
 
 
 std::ostream & operator<< (std::ostream & out, const EthAddress & address)
@@ -219,7 +253,7 @@ void MyApp::init(Loader *loader, const Config& config)
 	QObject::connect(ctrl, &Controller::switchUp, this, &MyApp::onSwitchUp);
 	ctrl->registerHandler(this);
 	// init of receiving messages
-	init_takingMessages();
+	std::cout << "status init_takingMessages() == " << init_takingMessages() << std::endl;
 }
 
 
@@ -259,92 +293,6 @@ OFMessageHandler::Action MyApp::BGPprocess(OFConnection* ofconn, Flow* flow)
 	return OFMessageHandler::Continue;
 }
 /*
-unsigned ARP_SIZE = 2 + 2 + 1 + 1 + 2 + 6 + 4 + 6 + 4;
-
-uint8_t * getARP(const uint16_t operation, EthAddress srcEth, IPAddress srcIP = IPAddress("0.0.0.0"), 
-		EthAddress dstEth = EthAddress("ff:ff:ff:ff:ff:ff"), IPAddress dstIP = IPAddress("255.255.255.255"))
-{
-	uint8_t * data = new uint8_t[ARP_SIZE];
-	unsigned j = 0;
-
-	*reinterpret_cast<uint16_t*>(data + j) = 0x0001; j += 2; // HTYPE
-	*reinterpret_cast<uint16_t*>(data + j) = 0x0800; j += 2; // PTYPE
-	data[4] = uint8_t(6); ++j;// HLEN
-	data[5] = uint8_t(4); ++j; // PLEN
-	*reinterpret_cast<uint16_t*>(data + j) = operation; j += 2; // OPER
-	// SHA
-	for (unsigned i = 0; i < 6; ++i)
-		data[j + i] = *srcEth.get_data();
-	j += 6;
-	*reinterpret_cast<uint32_t*>(data + j) = srcIP.getIPv4(); j += 4;// SPA
-	// THA
-	for (unsigned i = 0; i < 6; ++i)
-		data[j + i] = *dstEth.get_data();
-	*reinterpret_cast<uint32_t*>(data + j) = srcIP.getIPv4(); j += 4; // TPA
-	return data;
-}
-*/
-
-/*
-EthAddress * ARPservice::find(const IPAddress & ip)
-{
-	for (unsigned i = 0; i < ARPtable.size(); ++i)
-		if (ARPtable[i].ip == ip)
-			return &ARPtable[i].mac;
-	return nullptr;
-}
-
-IPAddress * ARPservice::find(const EthAddress & mac)
-{
-	for (unsigned i = 0; i < ARPtable.size(); ++i)
-		if (ARPtable[i].mac == mac)
-			return &ARPtable[i].ip;
-	return nullptr;
-}
-
-
-bool ARPservice::find(const EthAddress & mac, const IPAddress & ip)
-{
-	for (unsigned i = 0; i < ARPtable.size(); ++i)
-		if (ARPtable[i].mac == mac && ARPtable[i].ip == ip)
-			return true;
-	return false;
-}
-
-
-OFMessageHandler::Action ARPservice::process(OFConnection* ofconn, Flow* flow)
-{
-	if (flow->pkt()->readEthType() != 0x0806)
-		return OFMessageHandler::Continue;
-	Packet * packet = flow->pkt();
-	uint16_t op = packet->readARPOp();
-	switch (op)
-	{
-	case 0: 
-		return OFMessageHandler::Stop;
-	case 1:
-		{
-		if (!find(packet->readARPSHA(), packet->readARPSPA()))
-			addRecord(packet->readARPSHA(), packet->readARPSPA());
-		EthAddress * addr = find(packet->readARPTPA());
-		if (!addr)
-			return OFMessageHandler::Stop;
-		// TODO: sending ARP-reply
-		return OFMessageHandler::Continue;
-		}
-	case 2:
-		if (find(packet->readARPSHA(), packet->readARPSPA()))
-			addRecord(packet->readARPSHA(), packet->readARPSPA());
-		if (find(packet->readARPTHA(), packet->readARPTPA()))
-			addRecord(packet->readARPTHA(), packet->readARPTPA());
-		return OFMessageHandler::Continue;
-	default:
-		// TODO: ERROR ?
-		return OFMessageHandler::Continue;
-	}
-
-}
-*/
 
 OFMessageHandler::Action MyApp::Handler::processMiss(OFConnection* ofconn, Flow* flow)
 {

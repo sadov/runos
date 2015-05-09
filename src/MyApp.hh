@@ -16,6 +16,7 @@
 #include <pthread.h>
 #include <pwd.h>
 #include <signal.h>
+#include <iostream>
 
 //#include "common.h"
 //#include "route.h"
@@ -30,6 +31,7 @@ struct Route
 	u_char prefix_len;
 	uint32_t prefix;
 	uint32_t gate;
+	
 	Route(const u_char prefix_length, const uint32_t pref, const uint32_t postfix) : prefix_len(prefix_length), prefix(pref), gate(postfix)
 	{}
 	bool operator==(const Route & r)
@@ -38,6 +40,7 @@ struct Route
 	{ return !(*this == r); }
 };
 
+	std::ostream & operator<<(std::ostream & out, const Route & r);
 
 /*
 class ARPservice
@@ -65,7 +68,6 @@ class SocketHandler
 {
 	bool is_init;
 	const char * sockPath;
-	//int port; // application port
 	int sock; // socket
 	int sock_fd; // socket from accept
 	int8_t * data;
@@ -79,6 +81,8 @@ public:
 	//bool isinit() { return is_init; }
 	int read();
 	void close();
+	void printRoutes() 
+	{ for (unsigned i = 0; i < vRoute.size(); ++i) std::cout << vRoute[i] << std::endl; }
 	~SocketHandler() {}
 	friend void catcher(int sig);
 };
