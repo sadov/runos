@@ -261,8 +261,14 @@ OFMessageHandler::Action MyApp::BGPprocess(OFConnection* ofconn, Flow* flow)
 {
 	Packet * packet = flow->pkt();
 	// if IP-packet and TCP-segment
-	if (packet->readEthType() != 0x0800 || packet->readIPProto() != 6) 
+	if ( !(packet->readEthType() == 0x0800 && packet->readIPProto() == 6) )
 		return OFMessageHandler::Continue;
+	// check TCP port == BGP port (2605)
+	of13::OXMTLV oxm_fields;
+	flow->pkt()->read(oxm_fields);
+	if ( !(oxm_fields.equals(of13::TCPDst(2605))) )
+		return OFMessageHandler::Continue;
+	
 	of13::FlowMod fm;
 	// Creates in_port oxm_field with value=1
 	of13::InPort *port = new of13::InPort(1);
@@ -272,6 +278,8 @@ OFMessageHandler::Action MyApp::BGPprocess(OFConnection* ofconn, Flow* flow)
 	fm.add_oxm_field(new of13::EthType(0x0800));
 	// Create ip_proto oxm_field with value=6 (TCP) and add to Flow Mod
 	fm.add_oxm_field(new of13::IPProto(6));
+	// Create tcp_dst oxf_field with value=2605 (bgpd) and add to Flow Mod
+	fm.add_oxm_field(new of13::TCPDst(2605));
 
 	fm.add_oxm_field(new of13::IPv4Src(packet->readIPv4Src()));
 	fm.add_oxm_field(new of13::IPv4Dst(packet->readIPv4Dst()));
@@ -279,7 +287,7 @@ OFMessageHandler::Action MyApp::BGPprocess(OFConnection* ofconn, Flow* flow)
 
 	// Creates Output Action with in_port=1 and send_len=1024
 	// of13::OutputAction act(1, 1024);
-	of13::OutputAction act(2605, 1024); // port of BGP?
+	of13::OutputAction act(1, 1024);
 
 	// Creates ApplyAction and add action
 	of13::ApplyActions inst; 
@@ -292,10 +300,11 @@ OFMessageHandler::Action MyApp::BGPprocess(OFConnection* ofconn, Flow* flow)
 	delete[] buff;
 	return OFMessageHandler::Continue;
 }
-/*
+
 
 OFMessageHandler::Action MyApp::Handler::processMiss(OFConnection* ofconn, Flow* flow)
 {
+	printf("EthType == 0x%x", flow->pkt()->readEthType());
 	//if (ARPhandler.process(ofconn, flow) == Stop)
 	//	return Stop;
 	//if ()

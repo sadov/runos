@@ -42,27 +42,6 @@ struct Route
 
 	std::ostream & operator<<(std::ostream & out, const Route & r);
 
-/*
-class ARPservice
-{
-	struct Record
-	{
-		EthAddress mac;
-		IPAddress ip;
-
-		Record(const EthAddress & Ethadd, const IPAddress & IPadd) : mac(Ethadd), ip(IPadd) {}
-	};
-	std::vector< Record > ARPtable;
-public:
-	void addRecord(const EthAddress & mac, const IPAddress & ip)
-	{ ARPtable.push_back(Record(mac, ip)); }
-
-	EthAddress * find(const IPAddress & ip);
-	IPAddress * find(const EthAddress & mac);
-	bool find(const EthAddress & mac, const IPAddress & ip);
-	OFMessageHandler::Action process(OFConnection* ofconn, Flow* flow);  
-};
-*/
 
 class SocketHandler
 {
@@ -93,7 +72,7 @@ class MyApp : public Application, public OFMessageHandlerFactory
 	SIMPLE_APPLICATION(MyApp, "myapp")
 public:
 	void init(Loader *loader, const Config& config);
-	std::string orderingName() const override { return "mac-filtering"; }
+	std::string orderingName() const override { return "BGP-routing"; }
 	bool isPostreq(const std::string &name) const override { return (name == "forwarding"); }
 	OFMessageHandler* makeOFMessageHandler() override { new Handler(); }
 public slots:

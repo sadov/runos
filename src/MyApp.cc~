@@ -259,10 +259,18 @@ void MyApp::init(Loader *loader, const Config& config)
 
 OFMessageHandler::Action MyApp::BGPprocess(OFConnection* ofconn, Flow* flow)
 {
+	of13::OXMTLV oxm_fields;
+	flow->pkt()->read(match);
 	Packet * packet = flow->pkt();
 	// if IP-packet and TCP-segment
-	if (packet->readEthType() != 0x0800 || packet->readIPProto() != 6) 
+	if ( !(packet->readEthType() == 0x0800 && packet->readIPProto() == 6) )
 		return OFMessageHandler::Continue;
+	// check TCP port == BGP port (2605)
+	of13::OXMTLV oxm_fields;
+	flow->pkt()->read(oxm_fields);
+	if ( !(oxm_fields.equals(of13::TCPDst(2605))) )
+		return OFMessageHandler::Continue;
+	
 	of13::FlowMod fm;
 	// Creates in_port oxm_field with value=1
 	of13::InPort *port = new of13::InPort(1);
@@ -272,6 +280,8 @@ OFMessageHandler::Action MyApp::BGPprocess(OFConnection* ofconn, Flow* flow)
 	fm.add_oxm_field(new of13::EthType(0x0800));
 	// Create ip_proto oxm_field with value=6 (TCP) and add to Flow Mod
 	fm.add_oxm_field(new of13::IPProto(6));
+	// Create tcp_dst oxf_field with value=2605 (bgpd) and add to Flow Mod
+	fm.add_oxm_field(new of13::TCPDst(2605));
 
 	fm.add_oxm_field(new of13::IPv4Src(packet->readIPv4Src()));
 	fm.add_oxm_field(new of13::IPv4Dst(packet->readIPv4Dst()));
@@ -279,7 +289,7 @@ OFMessageHandler::Action MyApp::BGPprocess(OFConnection* ofconn, Flow* flow)
 
 	// Creates Output Action with in_port=1 and send_len=1024
 	// of13::OutputAction act(1, 1024);
-	of13::OutputAction act(2605, 1024); // port of BGP?
+	of13::OutputAction act(1, 1024);
 
 	// Creates ApplyAction and add action
 	of13::ApplyActions inst; 
@@ -292,96 +302,11 @@ OFMessageHandler::Action MyApp::BGPprocess(OFConnection* ofconn, Flow* flow)
 	delete[] buff;
 	return OFMessageHandler::Continue;
 }
-/*
-unsigned ARP_SIZE = 2 + 2 + 1 + 1 + 2 + 6 + 4 + 6 + 4;
 
-uint8_t * getARP(const uint16_t operation, EthAddress srcEth, IPAddress srcIP = IPAddress("0.0.0.0"), 
-		EthAddress dstEth = EthAddress("ff:ff:ff:ff:ff:ff"), IPAddress dstIP = IPAddress("255.255.255.255"))
-{
-	uint8_t * data = new uint8_t[ARP_SIZE];
-	unsigned j = 0;
-
-	*reinterpret_cast<uint16_t*>(data + j) = 0x0001; j += 2; // HTYPE
-	*reinterpret_cast<uint16_t*>(data + j) = 0x0800; j += 2; // PTYPE
-	data[4] = uint8_t(6); ++j;// HLEN
-	data[5] = uint8_t(4); ++j; // PLEN
-	*reinterpret_cast<uint16_t*>(data + j) = operation; j += 2; // OPER
-	// SHA
-	for (unsigned i = 0; i < 6; ++i)
-		data[j + i] = *srcEth.get_data();
-	j += 6;
-	*reinterpret_cast<uint32_t*>(data + j) = srcIP.getIPv4(); j += 4;// SPA
-	// THA
-	for (unsigned i = 0; i < 6; ++i)
-		data[j + i] = *dstEth.get_data();
-	*reinterpret_cast<uint32_t*>(data + j) = srcIP.getIPv4(); j += 4; // TPA
-	return data;
-}
-*/
-
-/*
-EthAddress * ARPservice::find(const IPAddress & ip)
-{
-	for (unsigned i = 0; i < ARPtable.size(); ++i)
-		if (ARPtable[i].ip == ip)
-			return &ARPtable[i].mac;
-	return nullptr;
-}
-
-IPAddress * ARPservice::find(const EthAddress & mac)
-{
-	for (unsigned i = 0; i < ARPtable.size(); ++i)
-		if (ARPtable[i].mac == mac)
-			return &ARPtable[i].ip;
-	return nullptr;
-}
-
-
-bool ARPservice::find(const EthAddress & mac, const IPAddress & ip)
-{
-	for (unsigned i = 0; i < ARPtable.size(); ++i)
-		if (ARPtable[i].mac == mac && ARPtable[i].ip == ip)
-			return true;
-	return false;
-}
-
-
-OFMessageHandler::Action ARPservice::process(OFConnection* ofconn, Flow* flow)
-{
-	if (flow->pkt()->readEthType() != 0x0806)
-		return OFMessageHandler::Continue;
-	Packet * packet = flow->pkt();
-	uint16_t op = packet->readARPOp();
-	switch (op)
-	{
-	case 0: 
-		return OFMessageHandler::Stop;
-	case 1:
-		{
-		if (!find(packet->readARPSHA(), packet->readARPSPA()))
-			addRecord(packet->readARPSHA(), packet->readARPSPA());
-		EthAddress * addr = find(packet->readARPTPA());
-		if (!addr)
-			return OFMessageHandler::Stop;
-		// TODO: sending ARP-reply
-		return OFMessageHandler::Continue;
-		}
-	case 2:
-		if (find(packet->readARPSHA(), packet->readARPSPA()))
-			addRecord(packet->readARPSHA(), packet->readARPSPA());
-		if (find(packet->readARPTHA(), packet->readARPTPA()))
-			addRecord(packet->readARPTHA(), packet->readARPTPA());
-		return OFMessageHandler::Continue;
-	default:
-		// TODO: ERROR ?
-		return OFMessageHandler::Continue;
-	}
-
-}
-*/
 
 OFMessageHandler::Action MyApp::Handler::processMiss(OFConnection* ofconn, Flow* flow)
 {
+	printf("EthType == 0x%x", flow->pkt()->readEthType());
 	//if (ARPhandler.process(ofconn, flow) == Stop)
 	//	return Stop;
 	//if ()
