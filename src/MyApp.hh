@@ -79,11 +79,12 @@ public slots:
 	void onSwitchUp(OFConnection* ofconn, of13::FeaturesReply fr);
 
 
-	OFMessageHandler::Action BGPprocess(OFConnection* ofconn, Flow* flow);
 private:
 	class Handler: public OFMessageHandler {
 	public:
 		Action processMiss(OFConnection* ofconn, Flow* flow) override;
+		OFMessageHandler::Action BGPprocess(OFConnection* ofconn, Flow* flow);
+		OFMessageHandler::Action ARPprocess(OFConnection* ofconn, Flow* flow);
 	};
 	
 	//ARPservice ARPhandler;

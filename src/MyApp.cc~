@@ -21,6 +21,22 @@ struct cgnat_message {
 	uint32_t prefix;
 	uint32_t gate;
 };
+	
+std::ostream & operator<< (std::ostream & out, const EthAddress & address)
+{
+	out << address.to_string();
+	return out;
+}
+
+std::ostream & operator<< (std::ostream & out, const IPAddress & address)
+{
+	IPAddress addressV4 = address;
+	uint32_t number = addressV4.getIPv4();
+	out << number % 256;
+	for (unsigned i = 1; i < 4; ++i)
+		out << '.' << ((number >> (i * 8)) % 256);
+	return out;
+}
 
 SocketHandler zebra(CGNAT_SOCK_PATH);
 
@@ -221,23 +237,6 @@ void SocketHandler::close()
 }
 // end of class SocketHandler
 
-
-std::ostream & operator<< (std::ostream & out, const EthAddress & address)
-{
-	out << address.to_string();
-	return out;
-}
-
-std::ostream & operator<< (std::ostream & out, const IPAddress & address)
-{
-	IPAddress addressV4 = address;
-	uint32_t number = addressV4.getIPv4();
-	out << number % 256;
-	for (unsigned i = 1; i < 4; ++i)
-		out << '.' << ((number >> (i * 8)) % 256);
-	return out;
-}
-
  REGISTER_APPLICATION(MyApp, {"controller", ""})
 
 void MyApp::onSwitchUp(OFConnection* ofconn, of13::FeaturesReply fr)
@@ -257,39 +256,39 @@ void MyApp::init(Loader *loader, const Config& config)
 }
 
 
-OFMessageHandler::Action MyApp::BGPprocess(OFConnection* ofconn, Flow* flow)
+OFMessageHandler::Action MyApp::Handler::BGPprocess(OFConnection* ofconn, Flow* flow)
 {
-	of13::OXMTLV oxm_fields;
-	flow->pkt()->read(match);
-	Packet * packet = flow->pkt();
-	// if IP-packet and TCP-segment
-	if ( !(packet->readEthType() == 0x0800 && packet->readIPProto() == 6) )
-		return OFMessageHandler::Continue;
-	// check TCP port == BGP port (2605)
+	std::cout << "BGPprocess start" << std::endl;
 	of13::OXMTLV oxm_fields;
 	flow->pkt()->read(oxm_fields);
-	if ( !(oxm_fields.equals(of13::TCPDst(2605))) )
+	Packet * packet = flow->pkt();
+	// if IP-packet and TCP-segment
+	//if ( !(packet->readEthType() == 0x0800 && packet->readIPProto() == 6) )
+	if ( !(packet->readEthType() == 0x0800 && packet->readIPProto() == 6) )
 		return OFMessageHandler::Continue;
+	std::cout << "BGPprocess start TCP/IP" << std::endl;
+	// check TCP port == BGP port (179)
+	// TODO: how to compare with tcp_port=179???
+	//if ( !(of13::TCPDst(179).equals(oxm_fields)) )
+	//	return OFMessageHandler::Continue;
+	std::cout << "BGPprocess TCPDst == 179" << std::endl;
 	
 	of13::FlowMod fm;
-	// Creates in_port oxm_field with value=1
-	of13::InPort *port = new of13::InPort(1);
 	// Add in_port to Flow Mod
 	fm.add_oxm_field(new of13::InPort(packet->readInPort()));
 	// Create eth_type oxm_field with value=0x0800 (IPv4) and add to Flow Mod
 	fm.add_oxm_field(new of13::EthType(0x0800));
 	// Create ip_proto oxm_field with value=6 (TCP) and add to Flow Mod
 	fm.add_oxm_field(new of13::IPProto(6));
-	// Create tcp_dst oxf_field with value=2605 (bgpd) and add to Flow Mod
-	fm.add_oxm_field(new of13::TCPDst(2605));
+	// Create tcp_dst oxf_field with value=179 (bgp) and add to Flow Mod
+	fm.add_oxm_field(new of13::TCPDst(179));
 
 	fm.add_oxm_field(new of13::IPv4Src(packet->readIPv4Src()));
 	fm.add_oxm_field(new of13::IPv4Dst(packet->readIPv4Dst()));
 
-
-	// Creates Output Action with in_port=1 and send_len=1024
+	// Creates Output Action with in_port=5(veth_of1) and send_len=1024
 	// of13::OutputAction act(1, 1024);
-	of13::OutputAction act(1, 1024);
+	of13::OutputAction act(5, 1024);
 
 	// Creates ApplyAction and add action
 	of13::ApplyActions inst; 
@@ -300,13 +299,108 @@ OFMessageHandler::Action MyApp::BGPprocess(OFConnection* ofconn, Flow* flow)
 	uint8_t *buff = fm.pack();
 	ofconn->send(buff, fm.length());
 	delete[] buff;
+	
+	of13::FlowMod fm_ret;
+	fm_ret.add_oxm_field(new of13::InPort(5));
+	fm_ret.add_oxm_field(new of13::EthType(0x0800));
+	fm_ret.add_oxm_field(new of13::IPProto(6));
+	fm_ret.add_oxm_field(new of13::TCPDst(179));
+	fm_ret.add_oxm_field(new of13::IPv4Src(packet->readIPv4Dst()));
+	fm_ret.add_oxm_field(new of13::IPv4Dst(packet->readIPv4Src()));
+	of13::OutputAction act_ret(, 1024);
+	
+	
 	return OFMessageHandler::Continue;
 }
 
+OFMessageHandler::Action MyApp::Handler::ARPprocess(OFConnection* ofconn, Flow* flow)
+{
+	
+	// if !ARP then exit
+	if (flow->pkt()->readEthType() != 0x0806)
+		return Continue;
+	if (flow->pkt()->readARPOp() == 1)
+	{
+		uint8_t size_mes = (64/8) + 2*(48/8) + 2*(32/8);
+		uint8_t * mes = reinterpret_cast<uint8_t*>( new char[size_mes] );
+		*(reinterpret_cast<uint16_t*>(mes)) = 0x0001;
+		*(reinterpret_cast<uint16_t*>(mes+2)) = 0x0800;
+		*(reinterpret_cast<uint8_t*>(mes+4)) = 6;
+		*(reinterpret_cast<uint8_t*>(mes+5)) = 4;
+		*(reinterpret_cast<uint16_t*>(mes+6)) = 2;
+		// Addresses...
+		// eth1 == 100.0.1.1 == 52:54:00:aa:3c:c5
+		// eth2 == 100.0.4.1 == 52:54:00:6d:da:9d
+		if (flow->pkt()->readARPTPA() == IPAddress("100.0.4.1")) // eth2
+		{
+			*(reinterpret_cast<uint32_t*>(mes+8)) = 0x5254006d;
+			*(reinterpret_cast<uint16_t*>(mes+12)) = 0xda9d;
+			*(reinterpret_cast<uint16_t*>(mes+14)) = 100*256 + 0;
+			*(reinterpret_cast<uint16_t*>(mes+16)) = 4*256 + 1;
+		}
+		else if (flow->pkt()->readARPTPA() == IPAddress("100.0.1.1")) // eth1
+		{
+			*(reinterpret_cast<uint32_t*>(mes+8)) = 0x525400aa;
+			*(reinterpret_cast<uint16_t*>(mes+12)) = 0x3cc5;
+			*(reinterpret_cast<uint16_t*>(mes+14)) = 100*256 + 0;
+			*(reinterpret_cast<uint16_t*>(mes+16)) = 1*256 + 1;
+		}
+		else
+		{
+			delete[] mes;
+			return Continue;
+		}
+		uint8_t * sha = flow->pkt()->readARPSHA().get_data();
+		*(reinterpret_cast<uint16_t*>(mes+18)) = *(reinterpret_cast<uint8_t*>(sha));
+		*(reinterpret_cast<uint32_t*>(mes+20)) = *(reinterpret_cast<uint32_t*>(sha+2));
+		*(reinterpret_cast<uint32_t*>(mes+24)) = flow->pkt()->readARPSPA().getIPv4();
+		ofconn->send(mes, size_mes);
+		delete[] mes;
+	}
+	return Continue;
+}
 
 OFMessageHandler::Action MyApp::Handler::processMiss(OFConnection* ofconn, Flow* flow)
 {
-	printf("EthType == 0x%x", flow->pkt()->readEthType());
+	int eth_type = flow->pkt()->readEthType();
+	printf("EthType == 0x%x\n", eth_type);
+	/*
+	if (eth_type == 0x0806)// || (eth_type == 0x0800 && flow->pkt()->read)
+	{
+		of13::FlowMod fm;
+		// Add in_port to Flow Mod
+		fm.add_oxm_field(new of13::InPort(packet->readInPort()));
+		// Create eth_type oxm_field with value=0x0800 (IPv4) and add to Flow Mod
+		fm.add_oxm_field(new of13::EthType(0x0800));
+		// Create ip_proto oxm_field with value=6 (TCP) and add to Flow Mod
+		fm.add_oxm_field(new of13::IPProto(6));
+		// Create tcp_dst oxf_field with value=179 (bgp) and add to Flow Mod
+		fm.add_oxm_field(new of13::TCPDst(179));
+
+		fm.add_oxm_field(new of13::IPv4Src(packet->readIPv4Src()));
+		fm.add_oxm_field(new of13::IPv4Dst(packet->readIPv4Dst()));
+
+		// Creates Output Action with in_port=1 and send_len=1024
+		// of13::OutputAction act(1, 1024);
+		of13::OutputAction act(2, 1024);
+
+		// Creates ApplyAction and add action
+		of13::ApplyActions inst; 
+		inst.add_action(act);
+		//Add the ApplyAction to FlowMod
+		fm.add_instruction(inst);
+
+		uint8_t *buff = fm.pack();
+		ofconn->send(buff, fm.length());
+		delete[] buff;
+		//std::cout << "ARP : type == " << flow->pkt()->readARPOp() << std::endl;
+		//std::cout << flow->pkt()->readARPSHA() << " ---> " << flow->pkt()->readARPTHA() << std::endl;
+		//std::cout << flow->pkt()->readARPSPA() << " ---> " << flow->pkt()->readARPTPA() << std::endl;
+	}
+	*/
+	OFMessageHandler::Action value;
+	if (BGPprocess(ofconn, flow) == Stop)
+		return Stop;
 	//if (ARPhandler.process(ofconn, flow) == Stop)
 	//	return Stop;
 	//if ()
