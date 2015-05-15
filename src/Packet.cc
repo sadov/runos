@@ -20,6 +20,8 @@
 #include <tins/rawpdu.h>
 #include <tins/arp.h>
 #include <tins/ip.h>
+#include <tins/tcp.h>
+#include <tins/udp.h>
 
 struct PacketImpl {
     of13::Match match;
@@ -27,6 +29,9 @@ struct PacketImpl {
     Tins::EthernetII pkt;
     Tins::ARP*       arp;
     Tins::IP*        ip;
+    Tins::TCP*       tcp;
+    Tins::UDP*       udp;
+
 
     PacketImpl(of13::PacketIn& pi)
         : //match(pi.match()),
@@ -34,7 +39,9 @@ struct PacketImpl {
           pkt(Tins::RawPDU(static_cast<uint8_t*>(pi.data()), pi.data_len())
               .to<Tins::EthernetII>()),
           arp(dynamic_cast<Tins::ARP*>(pkt.inner_pdu())),
-          ip(dynamic_cast<Tins::IP*>(pkt.inner_pdu()))
+          ip(dynamic_cast<Tins::IP*>(pkt.inner_pdu())),
+          tcp(dynamic_cast<Tins::TCP*>(ip->inner_pdu())),
+          udp(dynamic_cast<Tins::UDP*>(ip->inner_pdu()))
     {
         of13::Match::swap(match, pi.match());
     }
@@ -109,6 +116,18 @@ uint8_t Packet::readIPECN()
 
 uint8_t Packet::readIPProto()
 { return m->ip ? m->ip->protocol() : 0; }
+
+uint16_t Packet::readTCPSport()
+{ return m->tcp ? m->tcp->sport() : 0; }
+
+uint16_t Packet::readTCPDport()
+{ return m->tcp ? m->tcp->dport() : 0; }
+
+uint16_t Packet::readUDPSport()
+{ return m->udp ? m->udp->sport() : 0; }
+
+uint16_t Packet::readUDPDport()
+{ return m->udp ? m->udp->dport() : 0; }
 
 void Packet::read(of13::OXMTLV& tlv)
 {
